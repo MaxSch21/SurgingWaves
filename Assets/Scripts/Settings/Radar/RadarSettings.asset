@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1d44817e449447fe8a1f72eab3091f5f, type: 3}
+  m_Name: RadarSettings
+  m_EditorClassIdentifier: Assembly-CSharp::SurgingWaves.Radar.RadarSettings
+  maxSpeed: 8
+  acceleration: 3
+  deceleration: 5
+  turnSpeed: 4
+  rotateWaterWithSteering: 1
+  waterTravelEnabled: 1
+  waterSpeedMultiplier: 1
+  range: 100
+  fishCount: 4
+  spawnNear: 0.5
+  spawnFar: 0.85
+  spawnHalfAngle: 55
+  reachDistance: 7
+  grabDistance: 2.5
+  wheelMaxAngle: 120
+  wheelDegreesPerPixel: 0.3
+  leverMaxAngle: 35
+  leverNotchResistance: 65
+  leverNotchTravel: 0.18
+  background: {r: 0.025, g: 0.1, b: 0.115, a: 1}
+  grid: {r: 0.15, g: 0.4, b: 0.33, a: 1}
+  signal: {r: 0.43, g: 0.96, b: 0.71, a: 1}
+  monster: {r: 1, g: 0.65, b: 0.3, a: 1}
+  sweepDegreesPerSecond: 45
