@@ -32,7 +32,7 @@ namespace SurgingWaves.Radar
                 searchDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
             {
                 HelmMouseControl control = hit.collider.GetComponentInParent<HelmMouseControl>();
-                if (control != null && control.isActiveAndEnabled && control.settings != null &&
+                if (control != null && control.isActiveAndEnabled && !control.IsHeld && control.settings != null &&
                     hit.distance <= control.settings.grabDistance) target = control;
             }
             if (target != null && keyboard.eKey.wasPressedThisFrame)
