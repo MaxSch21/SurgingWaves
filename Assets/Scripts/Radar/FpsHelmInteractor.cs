@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using SurgingWaves.Radio;
 using SurgingWaves.Interaction;
+using SurgingWaves.FishCrane;
 
 namespace SurgingWaves.Radar
 {
@@ -17,6 +18,9 @@ namespace SurgingWaves.Radar
         private HingedDoor doorTarget;
         private Vector3 doorTargetPoint;
         private string doorHint;
+        private FishCraneControl grabbedCrane;
+        private FishCraneControl craneTarget;
+        private Vector3 craneTargetPoint;
         public HelmMouseControl Grabbed => grabbed;
 
         // Called by FPS controller before mouse look, sharing its focus/menu gate.
@@ -25,7 +29,7 @@ namespace SurgingWaves.Radar
             Keyboard keyboard = Keyboard.current;
             Mouse mouse = Mouse.current;
             if (!acceptInput || view == null || keyboard == null || mouse == null)
-            { Release(); target = null; radioTarget = null; doorTarget = null; doorHint = null; return false; }
+            { Release(); target = null; radioTarget = null; doorTarget = null; doorHint = null; craneTarget = null; return false; }
             if (grabbed != null)
             {
                 if (!keyboard.eKey.isPressed || !grabbed.isActiveAndEnabled ||
@@ -53,10 +57,20 @@ namespace SurgingWaves.Radar
                 return true;
             }
 
+            if (grabbedCrane != null)
+            {
+                if (!keyboard.eKey.isPressed || !grabbedCrane.IsHeld || !grabbedCrane.CanInteract ||
+                    Vector3.Distance(view.transform.position, grabbedCrane.GrabPoint) > grabbedCrane.GrabDistance)
+                { Release(); return false; }
+                grabbedCrane.ApplyMouseDelta(mouse.delta.ReadValue());
+                return true;
+            }
+
             target = null;
             radioTarget = null;
             doorTarget = null;
             doorHint = null;
+            craneTarget = null;
             if (Physics.Raycast(view.transform.position, view.transform.forward, out RaycastHit hit,
                 searchDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
             {
@@ -75,6 +89,10 @@ namespace SurgingWaves.Radar
                     else
                     { doorTarget = door; doorTargetPoint = hit.point; }
                 }
+                FishCraneControl craneControl = hit.collider.GetComponentInParent<FishCraneControl>();
+                if (target == null && radioTarget == null && doorTarget == null && craneControl != null &&
+                    craneControl.isActiveAndEnabled && !craneControl.IsHeld && hit.distance <= craneControl.GrabDistance)
+                { craneTarget = craneControl; craneTargetPoint = hit.point; }
             }
             if (target != null && keyboard.eKey.wasPressedThisFrame)
             { grabbed = target; grabbed.BeginGrab(); return true; }
@@ -82,6 +100,8 @@ namespace SurgingWaves.Radar
             { grabbedRadio = radioTarget; grabbedRadio.BeginGrab(); return true; }
             if (doorTarget != null && keyboard.eKey.wasPressedThisFrame && doorTarget.BeginGrab(doorTargetPoint))
             { grabbedDoor = doorTarget; return true; }
+            if (craneTarget != null && keyboard.eKey.wasPressedThisFrame && craneTarget.BeginGrab(craneTargetPoint))
+            { grabbedCrane = craneTarget; return true; }
             return false;
         }
 
@@ -93,15 +113,23 @@ namespace SurgingWaves.Radar
             grabbedRadio = null;
             if (grabbedDoor != null) grabbedDoor.EndGrab();
             grabbedDoor = null;
+            if (grabbedCrane != null) grabbedCrane.EndGrab();
+            grabbedCrane = null;
         }
-        private void OnDisable() { Release(); target = null; radioTarget = null; doorTarget = null; doorHint = null; }
-        private void OnApplicationFocus(bool focused) { if (!focused) { Release(); target = null; radioTarget = null; doorTarget = null; doorHint = null; } }
+        private void OnDisable() { Release(); target = null; radioTarget = null; doorTarget = null; doorHint = null; craneTarget = null; }
+        private void OnApplicationFocus(bool focused) { if (!focused) { Release(); target = null; radioTarget = null; doorTarget = null; doorHint = null; craneTarget = null; } }
 
         private void OnGUI()
         {
             DebugFpsController fps = GetComponent<DebugFpsController>();
             if (fps.InputBlocked || Cursor.lockState != CursorLockMode.Locked) return;
             GUI.Label(new Rect(Screen.width * 0.5f - 4f, Screen.height * 0.5f - 10f, 16f, 24f), "+");
+            FishCraneControl craneControl = grabbedCrane != null ? grabbedCrane : craneTarget;
+            if (craneControl != null)
+            {
+                GUI.Box(new Rect((Screen.width - 650f) * 0.5f, Screen.height - 82f, 650f, 42f), craneControl.Hint);
+                return;
+            }
             HingedDoor door = grabbedDoor != null ? grabbedDoor : doorTarget;
             if (door != null)
             {
