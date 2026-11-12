@@ -1,8 +1,12 @@
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Filtering;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 namespace SurgingWaves.Interaction
 {
-    public sealed class HingedDoor : MonoBehaviour
+    public sealed class HingedDoor : MonoBehaviour, IXRHoverFilter, IXRSelectFilter
     {
         public enum MotionType { Door, FloorHatch }
 
@@ -22,6 +26,12 @@ namespace SurgingWaves.Interaction
         private float mouseDegreesPerPixel = 0.25f;
         [SerializeField] private Vector3 interactionCenter = new Vector3(0.75f, 1f, 0f);
         [SerializeField] private Vector3 interactionSize = new Vector3(0.5f, 2f, 0.2f);
+
+        [Header("VR Interaction")]
+        [SerializeField, Min(0f), Tooltip("Maximum hand distance from the interaction zone when starting a direct grab, in metres.")]
+        private float vrGrabPadding = 0.1f;
+        [SerializeField, Min(0.001f), Tooltip("Ignore hand movement this close to the hinge axis, in metres, to avoid unstable angles.")]
+        private float minimumVRGrabRadius = 0.025f;
 
         [Header("Leichte Endrastung")]
         [SerializeField, Min(0f), Tooltip("Fangbereich beim Loslassen, in Grad.")]
@@ -44,6 +54,11 @@ namespace SurgingWaves.Interaction
         private float currentAngle;
         private float angularVelocity;
         private bool held;
+        private XRSimpleInteractable vrInteractable;
+        private IXRSelectInteractor vrInteractor;
+        private Transform vrHand;
+        private Vector3 previousVRDirection;
+        private bool hasPreviousVRDirection;
 
         public float GrabDistance => grabDistance;
         public float CurrentAngle => currentAngle;
@@ -54,6 +69,9 @@ namespace SurgingWaves.Interaction
         private float LowerLimit => Mathf.Min(minAngle, maxAngle);
         private float UpperLimit => Mathf.Max(minAngle, maxAngle);
 
+        // Keep filtering disabled doors too, while their XRI component is still enabled.
+        public bool canProcess => true;
+
         private void Awake()
         {
             startRotation = transform.localRotation;
@@ -61,6 +79,103 @@ namespace SurgingWaves.Interaction
             hingeInParent = transform.localPosition + startRotation * scaledHinge;
             axis = hingeLocalAxis.sqrMagnitude > 0.0001f ? hingeLocalAxis.normalized : Vector3.up;
             SetAngle(0f);
+
+            // VR is optional; existing FPS-only instances need no additional components.
+            vrInteractable = GetComponent<XRSimpleInteractable>();
+            if (vrInteractable != null)
+            {
+                vrInteractable.hoverFilters.Add(this);
+                vrInteractable.selectFilters.Add(this);
+            }
+        }
+
+        private void OnEnable()
+        {
+            if (vrInteractable == null) return;
+            vrInteractable.selectEntered.AddListener(OnVRGrab);
+            vrInteractable.selectExited.AddListener(OnVRRelease);
+        }
+
+        public bool Process(IXRHoverInteractor interactor, IXRHoverInteractable interactable)
+        {
+            return isActiveAndEnabled && (held
+                ? interactor == vrInteractor
+                : TryGetVRGrabPoint(interactor, out _));
+        }
+
+        public bool Process(IXRSelectInteractor interactor, IXRSelectInteractable interactable)
+        {
+            return isActiveAndEnabled && (held
+                ? interactor == vrInteractor
+                : TryGetVRGrabPoint(interactor, out _));
+        }
+
+        private bool TryGetVRGrabPoint(IXRInteractor interactor, out Vector3 point)
+        {
+            point = default;
+            if (!(interactor is XRDirectInteractor) && !(interactor is NearFarInteractor)) return false;
+
+            // Use the tracked hand, not Near-Far's movable distant attach anchor.
+            Vector3 handPosition = interactor.transform.position;
+            Vector3 localPoint = new Bounds(interactionCenter, interactionSize)
+                .ClosestPoint(transform.InverseTransformPoint(handPosition));
+            point = transform.TransformPoint(localPoint);
+            return (point - handPosition).sqrMagnitude <= vrGrabPadding * vrGrabPadding;
+        }
+
+        private void OnVRGrab(SelectEnterEventArgs args)
+        {
+            if (!isActiveAndEnabled || held || !TryGetVRGrabPoint(args.interactorObject, out Vector3 point))
+            {
+                vrInteractable.interactionManager.SelectExit(args.interactorObject, vrInteractable);
+                return;
+            }
+
+            // The point was clamped to the zone already; avoid a second bounds check
+            // after a world/local round trip, which can round outside its surface.
+            StartGrab(point);
+            vrInteractor = args.interactorObject;
+            vrHand = vrInteractor.transform;
+            hasPreviousVRDirection = TryGetVRDirection(out previousVRDirection);
+        }
+
+        private void OnVRRelease(SelectExitEventArgs args)
+        {
+            if (args.interactorObject == vrInteractor) EndGrab();
+        }
+
+        private void LateUpdate()
+        {
+            if (vrInteractor == null) return;
+            if (vrHand == null || vrInteractable == null || !vrInteractable.isActiveAndEnabled ||
+                !vrInteractable.IsSelected(vrInteractor))
+            {
+                EndGrab();
+                return;
+            }
+
+            if (!TryGetVRDirection(out Vector3 direction))
+            {
+                hasPreviousVRDirection = false;
+                return;
+            }
+
+            if (hasPreviousVRDirection)
+                SetAngle(currentAngle + Vector3.SignedAngle(previousVRDirection, direction, axis));
+
+            // Discard motion past the stops so reversing responds immediately.
+            previousVRDirection = direction;
+            hasPreviousVRDirection = true;
+        }
+
+        private bool TryGetVRDirection(out Vector3 direction)
+        {
+            Transform parent = transform.parent;
+            Vector3 handInParent = parent != null ? parent.InverseTransformPoint(vrHand.position) : vrHand.position;
+            direction = Vector3.ProjectOnPlane(Quaternion.Inverse(startRotation) * (handInParent - hingeInParent), axis);
+            Vector3 radialOffset = startRotation * direction;
+            if (parent != null) radialOffset = parent.TransformVector(radialOffset);
+            return radialOffset.sqrMagnitude >= minimumVRGrabRadius * minimumVRGrabRadius;
         }
 
         private void FixedUpdate()
@@ -94,10 +209,15 @@ namespace SurgingWaves.Interaction
         public bool BeginGrab(Vector3 worldPoint)
         {
             if (!CanGrabAt(worldPoint)) return false;
+            StartGrab(worldPoint);
+            return true;
+        }
+
+        private void StartGrab(Vector3 worldPoint)
+        {
             grabLocalPoint = transform.InverseTransformPoint(worldPoint);
             angularVelocity = 0f;
             held = true;
-            return true;
         }
 
         public void ApplyMouseDelta(Vector2 delta)
@@ -110,9 +230,30 @@ namespace SurgingWaves.Interaction
         {
             held = false;
             angularVelocity = 0f;
+            vrInteractor = null;
+            vrHand = null;
+            hasPreviousVRDirection = false;
         }
 
-        private void OnDisable() => EndGrab();
+        private void OnDisable()
+        {
+            if (vrInteractable != null)
+            {
+                if (vrInteractor != null && vrInteractable.IsSelected(vrInteractor) && vrInteractable.interactionManager != null)
+                    vrInteractable.interactionManager.SelectExit(vrInteractor, vrInteractable);
+
+                vrInteractable.selectEntered.RemoveListener(OnVRGrab);
+                vrInteractable.selectExited.RemoveListener(OnVRRelease);
+            }
+            EndGrab();
+        }
+
+        private void OnDestroy()
+        {
+            if (vrInteractable == null) return;
+            vrInteractable.hoverFilters.Remove(this);
+            vrInteractable.selectFilters.Remove(this);
+        }
 
         public void SetAngle(float angle)
         {

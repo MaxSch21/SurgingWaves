@@ -26,6 +26,12 @@ namespace SurgingWaves.Fish
         private void OnEnable()
         {
             previewDirty = true;
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+        }
+
+        private void OnBeforeAssemblyReload()
+        {
+            ClearVisual();
         }
 
         private void OnValidate()
@@ -229,24 +235,44 @@ namespace SurgingWaves.Fish
 
         private void OnDisable()
         {
-            ClearVisual();
+#if UNITY_EDITOR
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
+#endif
+            ClearVisual(duringLifecycleChange: true);
         }
 
         private void OnDestroy()
         {
-            ClearVisual();
+            ClearVisual(duringLifecycleChange: true);
         }
 
-        private void ClearVisual()
+        private void ClearVisual(bool duringLifecycleChange = false)
         {
-            // Deactivate before deferred destruction to avoid displaying two skins in a frame.
-            if (skinRoot != null) skinRoot.SetActive(false);
-            DestroyGeneratedObject(skinRoot);
-            DestroyGeneratedObject(runtimeMesh);
+            GameObject rootToDestroy = skinRoot;
+            Mesh meshToDestroy = runtimeMesh;
             skinRoot = null;
             runtimeMesh = null;
             bones = null;
             isEditorPreview = false;
+            if (rootToDestroy == null && meshToDestroy == null) return;
+
+#if UNITY_EDITOR
+            if (duringLifecycleChange && !Application.IsPlaying(gameObject))
+            {
+                // Parent activation/deactivation must finish before destroying its children.
+                // Capture the old objects so a newly enabled preview remains independent.
+                UnityEditor.EditorApplication.delayCall += () =>
+                {
+                    if (rootToDestroy != null) Object.DestroyImmediate(rootToDestroy);
+                    if (meshToDestroy != null) Object.DestroyImmediate(meshToDestroy);
+                };
+                return;
+            }
+#endif
+            // Hide replaced visuals immediately when rebuilding outside lifecycle callbacks.
+            if (!duringLifecycleChange && rootToDestroy != null) rootToDestroy.SetActive(false);
+            DestroyGeneratedObject(rootToDestroy);
+            DestroyGeneratedObject(meshToDestroy);
         }
 
         private void DestroyGeneratedObject(Object generated)

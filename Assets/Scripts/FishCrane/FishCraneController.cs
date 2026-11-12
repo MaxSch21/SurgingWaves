@@ -45,6 +45,9 @@ namespace SurgingWaves.FishCrane
         private bool turnHeld;
         private bool crankHeld;
 
+        public Transform Crank => crank;
+        public Vector3 CrankLocalAxis => crankLocalAxis.sqrMagnitude > 0.0001f ? crankLocalAxis.normalized : Vector3.right;
+
         public bool CanTurn => isActiveAndEnabled && net != null && !crankHeld
             && netTravel <= raisedTolerance && phase != Phase.Waiting;
         public bool CanCrank => isActiveAndEnabled && net != null && crank != null && !turnHeld
