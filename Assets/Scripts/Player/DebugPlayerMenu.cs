@@ -5,6 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
+using SurgingWaves;
 
 /// <summary>Desktop debug overlay. Keep this object outside both player origins.</summary>
 [DefaultExecutionOrder(-1000)]
@@ -23,8 +24,8 @@ public sealed class DebugPlayerMenu : MonoBehaviour
 
     [SerializeField] private XROrigin xrOrigin;
     [SerializeField] private DebugFpsController fpsOrigin;
-    [Tooltip("Optional boat motion component. The debug button toggles this component.")]
-    [SerializeField] private Behaviour boatMotion;
+    [Tooltip("Boat motion component controlled by the separate height and tilt buttons.")]
+    [SerializeField] private BoatWaveMotion boatMotion;
     [SerializeField] private bool startInFpsMode;
     [SerializeField] private Transform fpsSpawnPoint;
 
@@ -341,11 +342,16 @@ public sealed class DebugPlayerMenu : MonoBehaviour
             SwitchPlayer();
         GUI.enabled = true;
         GUILayout.Space(12f);
-        GUI.enabled = boatMotion != null;
-        if (GUILayout.Button(boatMotion == null ? "Keine Bootbewegung zugewiesen"
-            : "Bootbewegung: " + (boatMotion.enabled ? "AN - ausschalten" : "AUS - einschalten"),
+        GUI.enabled = boatMotion != null && boatMotion.isActiveAndEnabled;
+        if (GUILayout.Button(boatMotion == null ? "No boat motion assigned"
+            : "Boat height: " + (boatMotion.HeightMotionEnabled ? "ON - turn off" : "OFF - turn on"),
             buttonStyle, GUILayout.Height(44f)))
-            boatMotion.enabled = !boatMotion.enabled;
+            boatMotion.HeightMotionEnabled = !boatMotion.HeightMotionEnabled;
+        GUILayout.Space(8f);
+        if (GUILayout.Button(boatMotion == null ? "No boat motion assigned"
+            : "Boat tilt: " + (boatMotion.TiltMotionEnabled ? "ON - turn off" : "OFF - turn on"),
+            buttonStyle, GUILayout.Height(44f)))
+            boatMotion.TiltMotionEnabled = !boatMotion.TiltMotionEnabled;
         GUI.enabled = true;
         GUILayout.Space(12f);
         GUILayout.Label("Environment: " + GetEnvironmentName(activeEnvironmentIndex), labelStyle);

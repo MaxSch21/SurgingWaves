@@ -16,6 +16,7 @@ public sealed class DebugFpsController : MonoBehaviour
     private CharacterController controller;
     private float verticalSpeed;
     private float pitch;
+    private float yaw;
     private SurgingWaves.Radar.FpsHelmInteractor helmInteractor;
 
     public bool InputBlocked { get; set; } = true;
@@ -24,6 +25,7 @@ public sealed class DebugFpsController : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        yaw = transform.eulerAngles.y;
         if (playerCamera == null)
             playerCamera = GetComponentInChildren<Camera>(true);
         if (playerCamera == null)
@@ -52,6 +54,7 @@ public sealed class DebugFpsController : MonoBehaviour
         bool wasEnabled = character.enabled;
         character.enabled = false;
         transform.SetPositionAndRotation(feetPosition, Quaternion.Euler(0f, yaw, 0f));
+        this.yaw = yaw;
         character.enabled = wasEnabled;
         playerCamera.transform.localRotation = Quaternion.identity;
         pitch = 0f;
@@ -60,6 +63,10 @@ public sealed class DebugFpsController : MonoBehaviour
 
     private void Update()
     {
+        // Follow the boat's position while keeping the desktop player and horizon upright.
+        // Rebuild world yaw instead of accumulating local tilt under a rocking parent.
+        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+
         if (!Application.isFocused || Time.deltaTime <= 0f)
         {
             helmInteractor.ProcessInput(playerCamera, false);
@@ -80,7 +87,8 @@ public sealed class DebugFpsController : MonoBehaviour
             {
                 // Mouse delta already represents this frame's movement.
                 Vector2 delta = mouse.delta.ReadValue() * mouseSensitivity;
-                transform.Rotate(0f, delta.x, 0f, Space.World);
+                yaw = Mathf.Repeat(yaw + delta.x, 360f);
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
                 pitch = Mathf.Clamp(pitch - delta.y, -85f, 85f);
                 playerCamera.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
             }
